@@ -1,7 +1,7 @@
 from devices import DeviceManager
+from services.data_loader import DataLoader
 from memory import MemoryManager
 from schedulers import CPU_Scheduler
-from services.data_loader import DataLoader
 
 
 def main(
@@ -16,7 +16,9 @@ def main(
     cpu_schedule = cpu.execute(cpu_schedule_method)
 
     if isinstance(memory_requering_sequency, str):
-        memory_requering_sequency = loader.memory_references(memory_requering_sequency)
+        memory_requering_sequency = loader.load_memory_references(
+            memory_requering_sequency
+        )
 
     memory = MemoryManager()
     memory_schedule = memory.execute(memory_schedule_method, memory_requering_sequency)

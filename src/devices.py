@@ -13,8 +13,8 @@ class DeviceManager:
         devices_uri: str = "devices_list.json",
     ):
         loader = data_loader or DataLoader()
-        self.__acl = loader.access_control_list(acl_uri)
-        self.__devices = loader.devices(devices_uri)
+        self.__acl = loader.load_access_control_list(acl_uri)
+        self.__devices = loader.load_devices(devices_uri)
 
     class DeviceStatus(StrEnum):
         FREE = "FREE"

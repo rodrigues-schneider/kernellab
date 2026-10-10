@@ -8,7 +8,7 @@ from services.data_loader import DataLoader
 # Classe que recebe uma lista de processos e ordena, retornando uma sequencia de escalonamento da cpu a cada ciclo
 class CPU_Scheduler:
     def __init__(self, uri: str):
-        self.processes_list = DataLoader().processes(uri)
+        self.processes_list = DataLoader().load_processes(uri)
 
     # Métodos da Classe
     class Methods(Enum):
