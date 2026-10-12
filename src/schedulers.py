@@ -1,100 +1,114 @@
 from collections import deque
-from copy import deepcopy
 from enum import Enum
 
-from services.data_loader import DataLoader
+import pandas as pd
 
 
 # Classe que recebe uma lista de processos e ordena, retornando uma sequencia de escalonamento da cpu a cada ciclo
 class CPU_Scheduler:
-    def __init__(self, uri: str):
-        self.processes_list = DataLoader().load_processes(uri)
-
     # Métodos da Classe
     class Methods(Enum):
-        FCFS = "__first_come_first_served"
-        SJF = "__shortest_job_first"
-        PRIORITY = "__priority_order"
-        ROUND_ROBIN = "__round_robin"
-
-    def execute(self, method: Methods, *args, **kwargs) -> list[dict]:
-        real_method = getattr(self, method.value)
-        return real_method(self.processes_list, *args, **kwargs)
+        FCFS = "first_come_first_served"
+        SJF = "shortest_job_first"
+        PRIORITY = "priority_order"
+        ROUND_ROBIN = "round_robin"
 
     # Recebe a lista de processos ordenada e um limite (quantum) e retorna uma lista ciclo a ciclo
-    def __order_processes(self, process_list: list[dict]) -> list[dict]:
+    @staticmethod
+    def __order_processes(
+        processes_df: pd.DataFrame, round_robin: bool = False, quantum: int = 3
+    ) -> pd.DataFrame:
 
-        index = 0
+        columns = ["cicle", *processes_df.columns, "cicles_left"]
 
-        final_list: list[dict] = []
+        # Trata erros, devolvendo um DF vazio
+        if processes_df.empty or (round_robin and quantum <= 0):
+            return pd.DataFrame(columns=columns)
 
-        for process in process_list:
-            p = deepcopy(process)
-            if "rounds_left" not in p:
-                p["rounds_left"] = int(p["burst"])
+        processes = processes_df.to_dict(orient="records")
+        rows = []
+        cicle = 0
 
-            for i in range(int(p["rounds_left"])):
-                index += 1
-                p["rounds_left"] -= 1
-                ciclo: dict = {index: p}
-                final_list.append(ciclo)
+        # Distribuição dos processo segundo o método 'Round Robin'
+        if round_robin:
+            queue = deque(processes)
 
-        return final_list
+            while queue:
+                process = queue.popleft()
+                cicles_left = int(process.get("cicles_left", process["burst"]))
+                cicles_to_run = min(quantum, cicles_left)
+
+                for _ in range(cicles_to_run):
+                    cicle += 1
+                    cicles_left -= 1
+                    rows.append(
+                        {
+                            "cicle": cicle,
+                            **process,
+                            "cicles_left": cicles_left,
+                        }
+                    )
+
+                if cicles_left > 0:
+                    process["cicles_left"] = cicles_left
+                    queue.append(process)
+
+        # Distribuição dos processos  para os demais métodos
+        else:
+            for process in processes:
+                cicles_left = int(process["burst"])
+
+                for _ in range(cicles_left):
+                    cicle += 1
+                    cicles_left -= 1
+                    rows.append(
+                        {
+                            "cicle": cicle,
+                            **process,
+                            "cicles_left": cicles_left,
+                        }
+                    )
+
+        return pd.DataFrame(rows, columns=columns)
 
     # Critério FCFS [ordem de chegada]
-    def __first_come_first_served(self, processes: list[dict]) -> list[dict]:
-        # Cria uma nova lista, ordenada, preservando a lista original
-        sorted_processes = sorted(
-            deepcopy(processes), key=lambda process: process["arrival"]
+    @staticmethod
+    def first_come_first_served(processes_df: pd.DataFrame) -> pd.DataFrame:
+        # Define os critérios de ordenamento e desempate
+        processes = processes_df.sort_values(
+            by=["arrival", "priority", "burst"], kind="stable"
         )
 
-        return self.__order_processes(sorted_processes)
+        return CPU_Scheduler.__order_processes(processes)
 
     # Critério SJF [executa primeiro aquele que demanda memos ciclos]
-    def __shortest_job_first(self, processes: list[dict]) -> list[dict]:
-        sorted_processes = sorted(
-            deepcopy(processes), key=lambda process: process["burst"]
+    @staticmethod
+    def shortest_job_first(processes_df: pd.DataFrame) -> pd.DataFrame:
+        # Define os critérios de ordenamento e desempate
+        processes = processes_df.sort_values(
+            by=["burst", "priority", "arrival"], kind="stable"
         )
 
-        return self.__order_processes(sorted_processes)
+        return CPU_Scheduler.__order_processes(processes)
 
     # Critério Priority Order [executa por ordem de prioridade]
-    def __priority_order(self, processes: list[dict]) -> list[dict]:
-        sorted_processes = sorted(
-            deepcopy(processes), key=lambda process: process["priority"]
+    @staticmethod
+    def priority_order(processes_df: pd.DataFrame) -> pd.DataFrame:
+        # Define os critérios de ordenamento e desempate
+        processes = processes_df.sort_values(
+            by=["priority", "arrival", "burst"], kind="stable"
         )
 
-        return self.__order_processes(sorted_processes)
+        return CPU_Scheduler.__order_processes(processes)
 
     # Critério Round Robin com Quantum padrão de 3 [igual a FCFS, mas limita o tempo de uso de CPU ao Quantum]
-    def __round_robin(self, processes: list[dict], quantum=3) -> list[dict]:
-        sorted_processes = sorted(
-            deepcopy(processes), key=lambda process: process["arrival"]
+    @staticmethod
+    def round_robin(processes_df: pd.DataFrame, quantum: int = 3) -> pd.DataFrame:
+        # Define os critérios de ordenamento e desempate
+        processes = processes_df.sort_values(
+            by=["arrival", "priority", "burst"], kind="stable"
         )
 
-        queue = deque(sorted_processes)
-
-        process_list: list[dict] = []
-
-        index = 0
-
-        if quantum <= 0:
-            return process_list
-
-        while queue:
-            process = queue.popleft()
-
-            if "rounds_left" not in process:
-                process["rounds_left"] = int(process["burst"])
-
-            cycles_to_run = min(quantum, process["rounds_left"])
-
-            for _ in range(cycles_to_run):
-                index += 1
-                process["rounds_left"] -= 1
-                process_list.append({index: process.copy()})
-
-            if process["rounds_left"] > 0:
-                queue.append(process)
-
-        return process_list
+        return CPU_Scheduler.__order_processes(
+            processes, round_robin=True, quantum=quantum
+        )

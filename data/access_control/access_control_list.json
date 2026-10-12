@@ -1,0 +1,10 @@
+[
+  {"process": "cardiac-monitor", "device": "lan", "permissions": ["read", "write"]},
+  {"process": "telemetry", "device": "lan", "permissions": ["read", "write"]},
+  {"process": "relatory-making", "device": "ssd", "permissions": ["write"]},
+  {"process": "alarm", "device": "audio", "permissions": ["write", "exclusive_access"]},
+  {"process": "alarm", "device": "lan", "permissions": ["write"]},
+  {"process": "backup", "device": "ssd", "permissions": ["read", "write"]},
+  {"process": "data-update", "device": "ssd", "permissions": ["read", "write"]},
+  {"process": "data-update", "device": "lan", "permissions": ["read"]}
+]

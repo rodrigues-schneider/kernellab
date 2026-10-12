@@ -1,21 +1,10 @@
 from copy import deepcopy
 from enum import StrEnum
 
-from services.data_loader import DataLoader
+import pandas as pd
 
 
-# Recebe a lista de requisições e organiza as filas dos dispositivos.
 class DeviceManager:
-    def __init__(
-        self,
-        data_loader: DataLoader | None = None,
-        acl_uri: str = "access_control_list.json",
-        devices_uri: str = "devices_list.json",
-    ):
-        loader = data_loader or DataLoader()
-        self.__acl = loader.load_access_control_list(acl_uri)
-        self.__devices = loader.load_devices(devices_uri)
-
     class DeviceStatus(StrEnum):
         FREE = "FREE"
         IN_USE = "IN_USE"
@@ -25,94 +14,104 @@ class DeviceManager:
         RUNNING = "RUNNING"
         WAITING = "WAITING"
 
-    # Verifica se o processo tem direito de acesso ao dispositivo
-    def __permissions_handler(self, process: dict) -> list[dict]:
+    @staticmethod
+    def _build_acl(access_control_list: pd.DataFrame) -> dict:
+        return {
+            process: group.set_index("device")["permissions"].to_dict()
+            for process, group in access_control_list.groupby("process")
+        }
 
-        permissions: list[dict] = []
+    @staticmethod
+    def _build_devices(devices_df: pd.DataFrame) -> dict:
+        devices = {}
+        for row in devices_df.to_dict(orient="records"):
+            devices[row["device"]] = {
+                "status": DeviceManager.DeviceStatus.FREE.value,
+                "running_process": "none",
+                "process_permissions": "none",
+                "queue": deepcopy(row.get("queue", [])),
+            }
+        return devices
 
-        process_acl = self.__acl.get(process["name"], {})
+    @staticmethod
+    def _enqueue_cycle_requests(
+        process: dict, acl: dict, devices: dict
+    ) -> None:
+        process_name = process.get("name")
+        process_acl = acl.get(process_name, {})
 
-        for device in process["devices"]:
-            if device in process_acl:
-                permissions.append({device: process_acl[device]})
-
-        return permissions
-
-    # Envia o pedido de execução para os dispositivos corretos
-    def __queue_mananger(self, process: dict):
-
-        permissions = self.__permissions_handler(process)
-
-        process["device_permissions"] = permissions
-
-        for device_name in process["devices"]:
-            # Verifica se o processo possui permissão.
-            if not any(device_name in permission for permission in permissions):
+        for device_name in process.get("devices", []) or []:
+            if device_name not in devices or device_name not in process_acl:
                 continue
 
-        for device_record in self.__devices:
-            if device_name in device_record:
-                device = device_record[device_name]
+            devices[device_name]["queue"].append(
+                {
+                    "process": process_name,
+                    "permissions": process_acl[device_name],
+                    "status": DeviceManager.ProcessStatus.WAITING.value,
+                }
+            )
 
-                process["device_status"] = self.ProcessStatus.WAITING.value
+    @staticmethod
+    def _run_device_cycle(devices: dict) -> list[dict]:
+        rows = []
 
-                device["queue"].append(process)
+        for device_name, device in devices.items():
+            device["status"] = DeviceManager.DeviceStatus.FREE.value
+            device["running_process"] = "none"
+            device["process_permissions"] = "none"
 
-                break
+            if device["queue"]:
+                request = device["queue"].pop(0)
+                permissions = request["permissions"]
 
-    # Executa as listas dos dispositivos a cada ciclo
-    def __execution_manager(self) -> list[dict]:
+                device["running_process"] = request["process"]
+                device["process_permissions"] = permissions
+                device["status"] = (
+                    DeviceManager.DeviceStatus.EXCLUSIVE_ACCESS.value
+                    if "exclusive_access" in permissions
+                    else DeviceManager.DeviceStatus.IN_USE.value
+                )
 
-        for device_record in self.__devices:
-            for device_name, device in device_record.items():
-                if device["queue"]:
-                    process = device["queue"].pop(0)
+            rows.append(
+                {
+                    "device": device_name,
+                    "status": device["status"],
+                    "running_process": device["running_process"],
+                    "process_permissions": device["process_permissions"],
+                    "queue": deepcopy(device["queue"]),
+                }
+            )
 
-                    device["status"] = self.DeviceStatus.IN_USE.value
+        return rows
 
-                    process["device_status"] = self.ProcessStatus.RUNNING.value
+    @staticmethod
+    def scheduler(
+        cpu_schedule: pd.DataFrame,
+        access_control_list: pd.DataFrame,
+        devices_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        columns = [
+            "cycle",
+            "device",
+            "status",
+            "running_process",
+            "process_permissions",
+            "queue",
+        ]
 
-                    device["running_process"] = process["name"]
+        if cpu_schedule.empty or devices_df.empty:
+            return pd.DataFrame(columns=columns)
 
-                    device["process_permissions"] = next(
-                        (
-                            permission[device_name]
-                            for permission in process["device_permissions"]
-                            if device_name in permission
-                        ),
-                        "none",
-                    )
+        acl = DeviceManager._build_acl(access_control_list)
+        devices = DeviceManager._build_devices(devices_df)
+        rows = []
 
-        return deepcopy(self.__devices)
+        for index, process in enumerate(cpu_schedule.to_dict(orient="records")):
+            cycle = process.get("cicle", process.get("cycle", index + 1))
+            DeviceManager._enqueue_cycle_requests(process, acl, devices)
 
-    # Método principal que restorna os estados a cada ciclo
-    def scheduler(self, requiring_list: list[dict]) -> list[dict]:
+            for device_state in DeviceManager._run_device_cycle(devices):
+                rows.append({"cycle": cycle, **device_state})
 
-        requests = deepcopy(requiring_list)
-
-        queue_sizes: list[int] = []
-
-        index = 0
-
-        final_list: list[dict] = [{index: deepcopy(self.__devices)}]
-
-        for request in requests:
-            self.__queue_mananger(request)
-
-        # Calcula o tamanho da fila de cada dispositivo e define a quantidade de repetições
-        for device_record in self.__devices:
-            for device in device_record.values():
-                queue_sizes.append(len(device["queue"]))
-
-        cycles_to_run = max(queue_sizes, default=0)
-
-        while cycles_to_run > 0:
-            state = self.__execution_manager()
-
-            index += 1
-
-            final_list.append({index: state})
-
-            cycles_to_run -= 1
-
-        return final_list
+        return pd.DataFrame.from_records(rows, columns=columns)

@@ -1,176 +1,143 @@
 from collections import deque
 from enum import Enum
 
+import pandas as pd
 
-# Recebe uma lista de requisições de memória e retorna o estado da memória a cada ciclo
+
+# Recebe a lista de requisições da memória e o número de páginas e demonstra o estado a cada ciclo
 class MemoryManager:
-    def __init__(self):
-        pass
-
-    # Métodos da Classe
     class Methods(Enum):
         FIFO = "first_in_first_out"
         LRU = "least_recently_used"
         OPTIMAL = "optimal"
 
-    def execute(
-        self, method: Methods, processes: list[dict], *args, **kwargs
-    ) -> list[dict]:
-        real_method = getattr(self, method.value)
-        return real_method(processes, *args, **kwargs)
+    @staticmethod
+    def _as_dataframe(rows: list[dict]) -> pd.DataFrame:
+        columns = [
+            "cycle",
+            "requested_page",
+            "page_hit",
+            "total_page_faults",
+            "total_page_hits",
+            "pages_in_memory",
+        ]
+        return pd.DataFrame.from_records(rows, columns=columns)
 
-    # Critério de ordem de chegada. A lista 'anda' a cada nova inserção
+    # Remove a página que chegou primeiro
+    @staticmethod
     def first_in_first_out(
-        self, requiring_list: list[str], memory_capacity: int = 4
-    ) -> list[dict]:
-
+        references_df: pd.DataFrame, memory_capacity: int = 4
+    ) -> pd.DataFrame:
+        references = references_df["page"].astype(str).tolist()
         memory: deque[str] = deque()
-
-        final_list: list[dict] = []
-
+        rows = []
         faults = 0
-
         hits = 0
 
-        if memory_capacity <= 0:
-            return final_list
+        for cycle, page in enumerate(references):
+            page_hit = page in memory
 
-        for index, frame in enumerate(requiring_list):
-            page_hit = True
-
-            if frame not in memory:
-                faults += 1
-                page_hit = False
-
-                if len(memory) >= memory_capacity:
-                    memory.pop()
-
-                memory.appendleft(frame)  # Nova pagina adicionada ao inicio
-            else:
+            if page_hit:
                 hits += 1
+            else:
+                faults += 1
+                if memory_capacity > 0:
+                    if len(memory) >= memory_capacity:
+                        memory.pop()
+                    memory.appendleft(page)
 
-            final_list.append(
+            rows.append(
                 {
-                    index: {
-                        "requested_page": frame,
-                        "page_hit": str(page_hit),
-                        "total_page_faults": faults,
-                        "total_page_hits": hits,
-                        "pages_in_memory": list(memory),
-                    }
+                    "cycle": cycle,
+                    "requested_page": page,
+                    "page_hit": page_hit,
+                    "total_page_faults": faults,
+                    "total_page_hits": hits,
+                    "pages_in_memory": list(memory),
                 }
             )
 
-        return final_list
+        return MemoryManager._as_dataframe(rows)
 
-    # Critério de página há mais tempo sem requisição. A lista 'anda' a cada nova inserção
+    # Remove a página há mais tempo sem uso
+    @staticmethod
     def least_recently_used(
-        self, requiring_list: list[str], memory_capacity: int = 4
-    ) -> list[dict]:
-
+        references_df: pd.DataFrame, memory_capacity: int = 4
+    ) -> pd.DataFrame:
+        references = references_df["page"].astype(str).tolist()
         memory: deque[str] = deque()
-
-        final_list: list[dict] = []
-
+        rows = []
         faults = 0
-
         hits = 0
 
-        if memory_capacity <= 0:
-            return final_list
+        for cycle, page in enumerate(references):
+            page_hit = page in memory
 
-        for index, frame in enumerate(requiring_list):
-            page_hit = True
-
-            if frame not in memory:
-                faults += 1
-                page_hit = False
-
-                if len(memory) >= memory_capacity:
-                    memory.pop()
-
-                memory.appendleft(frame)
-            else:  # Se a página está na memória, ela é movida para a primeira posição
+            if page_hit:
                 hits += 1
-                memory.remove(frame)
-                memory.appendleft(frame)
-
-            final_list.append(
-                {
-                    index: {
-                        "requested_page": frame,
-                        "page_hit": str(page_hit),
-                        "total_page_faults": faults,
-                        "total_page_hits": hits,
-                        "pages_in_memory": list(memory),
-                    }
-                }
-            )
-
-        return final_list
-
-    # Critério de página que ficará mais tempo sem requisições. A lista 'anda' a cada nova inserção
-    def optimal(
-        self, requiring_list: list[str], memory_capacity: int = 4
-    ) -> list[dict]:
-
-        memory: deque[str] = deque()
-
-        final_list: list[dict] = []
-
-        faults = 0
-
-        hits = 0
-
-        if memory_capacity <= 0:
-            return final_list
-
-        for index, frame in enumerate(requiring_list):
-            page_hit = True
-
-            if frame not in memory:
-                faults += 1
-                page_hit = False
-
-                if (
-                    len(memory) >= memory_capacity
-                ):  # Se a memória for extrapolada,remove a página mais distante
-                    future = requiring_list[index + 1 :]
-                    page_to_remove = None
-                    farthest_index = -1
-
-                    for p in memory:
-                        if p not in future:
-                            page_to_remove = p
-                            break
-
-                        else:
-                            next_use = future.index(p)
-                            if next_use > farthest_index:
-                                farthest_index = next_use
-                                page_to_remove = p
-
-                    memory.remove(page_to_remove)
-
-                memory.append(
-                    frame
-                )  # Nova pagina adicionada ao final para atender às convenções acadêmicas de desempate
-
+                memory.remove(page)
+                memory.appendleft(page)
             else:
-                hits += 1
+                faults += 1
+                if memory_capacity > 0:
+                    if len(memory) >= memory_capacity:
+                        memory.pop()
+                    memory.appendleft(page)
 
-            final_list.append(
+            rows.append(
                 {
-                    index: {
-                        "requested_page": frame,
-                        "page_hit": str(page_hit),
-                        "total_page_faults": faults,
-                        "total_page_hits": hits,
-                        "pages_in_memory": list(
-                            reversed(memory)
-                        ),  # Lista revertida para manter o padrão dos demais métodos
-                    }
+                    "cycle": cycle,
+                    "requested_page": page,
+                    "page_hit": page_hit,
+                    "total_page_faults": faults,
+                    "total_page_hits": hits,
+                    "pages_in_memory": list(memory),
                 }
             )
 
-        return final_list
+        return MemoryManager._as_dataframe(rows)
+
+    # Olha para o restante da lista e remove a página que ficará mais tempo sem ser requisitada
+    @staticmethod
+    def optimal(references_df: pd.DataFrame, memory_capacity: int = 4) -> pd.DataFrame:
+        references = references_df["page"].astype(str).tolist()
+        memory: deque[str] = deque()
+        rows = []
+        faults = 0
+        hits = 0
+
+        for cycle, page in enumerate(references):
+            page_hit = page in memory
+
+            if page_hit:
+                hits += 1
+            else:
+                faults += 1
+                if memory_capacity > 0:
+                    if len(memory) >= memory_capacity:
+                        future_references = references[cycle + 1 :]
+                        next_use = {
+                            resident_page: (
+                                future_references.index(resident_page)
+                                if resident_page in future_references
+                                else float("inf")
+                            )
+                            for resident_page in memory
+                        }
+                        page_to_remove = max(next_use, key=next_use.get)
+                        memory.remove(page_to_remove)
+
+                    memory.append(page)
+
+            rows.append(
+                {
+                    "cycle": cycle,
+                    "requested_page": page,
+                    "page_hit": page_hit,
+                    "total_page_faults": faults,
+                    "total_page_hits": hits,
+                    "pages_in_memory": list(reversed(memory)),
+                }
+            )
+
+        return MemoryManager._as_dataframe(rows)

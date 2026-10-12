@@ -1,0 +1,5 @@
+[
+  {"device": "lan", "status": "FREE", "running_process": "none", "process_permissions": "none", "queue": []},
+  {"device": "ssd", "status": "FREE", "running_process": "none", "process_permissions": "none", "queue": []},
+  {"device": "audio", "status": "FREE", "running_process": "none", "process_permissions": "none", "queue": []}
+]
