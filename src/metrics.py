@@ -1,16 +1,11 @@
 import pandas as pd
 
 
+# Calcula as métricas do simulador em ciclos.
 class Metrics:
-    """Calcula métricas do simulador e sempre retorna DataFrames."""
-
+    # Calcula as métricas da CPU usando o cronograma executado.
     @staticmethod
     def cpu(processes: pd.DataFrame, schedule: pd.DataFrame) -> pd.DataFrame:
-        """Retorna métricas por processo e uma linha final com médias e trocas.
-
-        Os valores são expressos em ciclos. A sequência de execução recebida é
-        mantida; o primeiro ciclo numerado como 1 começa no instante 0.
-        """
         columns = [
             "process",
             "waiting_cycles",
@@ -21,30 +16,28 @@ class Metrics:
         if processes.empty or schedule.empty:
             return pd.DataFrame(columns=columns)
 
-        cycle_column = "cicle" if "cicle" in schedule.columns else "cycle"
+        cycle_column = "cycle"
         process_column = "name" if "name" in schedule.columns else "id"
         ordered = schedule.sort_values(cycle_column, kind="stable")
         rows = []
 
         for process in processes.to_dict(orient="records"):
             name = process[process_column]
-            process_cycles = ordered.loc[
-                ordered[process_column] == name, cycle_column
-            ]
+            process_cycles = ordered.loc[ordered[process_column] == name, cycle_column]
             if process_cycles.empty:
                 continue
 
             first_cycle = int(process_cycles.iloc[0])
             completion_cycle = int(process_cycles.iloc[-1])
-            arrival_cycle = int(process["arrival"])
             burst_cycles = int(process["burst"])
-            turnaround_cycles = completion_cycle - arrival_cycle
+            # O cronograma estático considera todos os processos prontos no ciclo zero.
+            turnaround_cycles = completion_cycle
             rows.append(
                 {
                     "process": name,
                     "waiting_cycles": turnaround_cycles - burst_cycles,
                     "turnaround_cycles": turnaround_cycles,
-                    "response_cycles": first_cycle - 1 - arrival_cycle,
+                    "response_cycles": first_cycle - 1,
                     "context_switches": pd.NA,
                 }
             )
@@ -54,74 +47,100 @@ class Metrics:
             return result
 
         execution_order = ordered[process_column].tolist()
-        context_switches = sum(
-            previous != current
-            for previous, current in zip(execution_order, execution_order[1:])
-        )
+        context_switches = 0
+        for position in range(1, len(execution_order)):
+            previous_process = execution_order[position - 1]
+            current_process = execution_order[position]
+            if previous_process != current_process:
+                context_switches += 1
         summary = {
             "process": "MÉDIA",
-            "waiting_cycles": result["waiting_cycles"].mean(),
-            "turnaround_cycles": result["turnaround_cycles"].mean(),
-            "response_cycles": result["response_cycles"].mean(),
+            "waiting_cycles": round(result["waiting_cycles"].mean(), 2),
+            "turnaround_cycles": round(result["turnaround_cycles"].mean(), 2),
+            "response_cycles": round(result["response_cycles"].mean(), 2),
+            "context_switches": pd.NA,
+        }
+        context_switch_summary = {
+            "process": "TOTAL",
+            "waiting_cycles": pd.NA,
+            "turnaround_cycles": pd.NA,
+            "response_cycles": pd.NA,
             "context_switches": int(context_switches),
         }
-        return pd.concat([result, pd.DataFrame([summary])], ignore_index=True)
+        output_rows = result.to_dict(orient="records")
+        output_rows.append(summary)
+        output_rows.append(context_switch_summary)
+        return pd.DataFrame.from_records(output_rows, columns=columns)
 
+    # Agrupa ciclos consecutivos do mesmo processo em intervalos de CPU.
     @staticmethod
     def gantt(schedule: pd.DataFrame) -> pd.DataFrame:
-        """Retorna os intervalos contíguos do diagrama de Gantt em ciclos."""
-        columns = ["process", "start_cycle", "end_cycle"]
+        columns = ["process", "start_cycle", "end_cycle", "cycles_to_run"]
         if schedule.empty:
             return pd.DataFrame(columns=columns)
 
-        cycle_column = "cicle" if "cicle" in schedule.columns else "cycle"
+        cycle_column = "cycle"
         process_column = "name" if "name" in schedule.columns else "id"
         ordered = schedule.sort_values(cycle_column, kind="stable")
         rows = []
 
-        for cycle, process in ordered[[cycle_column, process_column]].itertuples(
-            index=False, name=None
-        ):
-            cycle = int(cycle)
+        for row in ordered.to_dict(orient="records"):
+            cycle = int(row[cycle_column])
+            process = row[process_column]
             if rows and rows[-1]["process"] == process:
                 rows[-1]["end_cycle"] = cycle
+                rows[-1]["cycles_to_run"] += 1
             else:
                 rows.append(
                     {
                         "process": process,
                         "start_cycle": cycle - 1,
                         "end_cycle": cycle,
+                        "cycles_to_run": 1,
                     }
                 )
         return pd.DataFrame.from_records(rows, columns=columns)
 
+    # Retorna contagens de memória e taxa de faltas em percentual.
     @staticmethod
     def memory(schedule: pd.DataFrame) -> pd.DataFrame:
-        """Retorna uma linha com hits, faltas e taxa de faltas de página."""
-        columns = ["references", "page_hits", "page_faults", "page_fault_rate"]
+        columns = [
+            "references",
+            "page_hits",
+            "page_faults",
+            "page_fault_rate (%)",
+        ]
         if schedule.empty:
             return pd.DataFrame([[0, 0, 0, 0.0]], columns=columns)
 
         if "page_hit" in schedule.columns:
-            hits = int(schedule["page_hit"].fillna(False).astype(bool).sum())
+            hits = 0
+            for page_hit in schedule["page_hit"]:
+                if bool(page_hit):
+                    hits += 1
             faults = len(schedule) - hits
         else:
             hits = int(schedule["total_page_hits"].iloc[-1])
             faults = int(schedule["total_page_faults"].iloc[-1])
         references = len(schedule)
         return pd.DataFrame(
-            [[references, hits, faults, faults / references]], columns=columns
+            [[references, hits, faults, round(faults / references * 100, 2)]],
+            columns=columns,
         )
 
+    # Converte os dados em DataFrames
     @staticmethod
     def from_values(**values: float) -> pd.DataFrame:
-        """Organiza valores de métricas já calculados em uma linha tabular."""
         return pd.DataFrame([values])
 
+    # Calcula as médias.
     @staticmethod
     def averages(metrics: pd.DataFrame) -> pd.DataFrame:
-        """Retorna as médias das colunas numéricas já calculadas por processo."""
         numeric = metrics.select_dtypes(include="number")
         if numeric.empty:
             return pd.DataFrame([{}])
-        return pd.DataFrame([numeric.mean().to_dict()])
+
+        averages = {}
+        for column in numeric.columns:
+            averages[column] = round(numeric[column].mean(), 2)
+        return pd.DataFrame([averages])

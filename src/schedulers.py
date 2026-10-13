@@ -19,7 +19,7 @@ class CPU_Scheduler:
         processes_df: pd.DataFrame, round_robin: bool = False, quantum: int = 3
     ) -> pd.DataFrame:
 
-        columns = ["cicle", *processes_df.columns, "cicles_left"]
+        columns = ["cycle", *processes_df.columns, "cycles_left"]
 
         # Trata erros, devolvendo um DF vazio
         if processes_df.empty or (round_robin and quantum <= 0):
@@ -27,7 +27,7 @@ class CPU_Scheduler:
 
         processes = processes_df.to_dict(orient="records")
         rows = []
-        cicle = 0
+        cycle = 0
 
         # Distribuição dos processo segundo o método 'Round Robin'
         if round_robin:
@@ -35,37 +35,37 @@ class CPU_Scheduler:
 
             while queue:
                 process = queue.popleft()
-                cicles_left = int(process.get("cicles_left", process["burst"]))
-                cicles_to_run = min(quantum, cicles_left)
+                cycles_left = int(process.get("cycles_left", process["burst"]))
+                cycles_to_run = min(quantum, cycles_left)
 
-                for _ in range(cicles_to_run):
-                    cicle += 1
-                    cicles_left -= 1
+                for _ in range(cycles_to_run):
+                    cycle += 1
+                    cycles_left -= 1
                     rows.append(
                         {
-                            "cicle": cicle,
+                            "cycle": cycle,
                             **process,
-                            "cicles_left": cicles_left,
+                            "cycles_left": cycles_left,
                         }
                     )
 
-                if cicles_left > 0:
-                    process["cicles_left"] = cicles_left
+                if cycles_left > 0:
+                    process["cycles_left"] = cycles_left
                     queue.append(process)
 
         # Distribuição dos processos  para os demais métodos
         else:
             for process in processes:
-                cicles_left = int(process["burst"])
+                cycles_left = int(process["burst"])
 
-                for _ in range(cicles_left):
-                    cicle += 1
-                    cicles_left -= 1
+                for _ in range(cycles_left):
+                    cycle += 1
+                    cycles_left -= 1
                     rows.append(
                         {
-                            "cicle": cicle,
+                            "cycle": cycle,
                             **process,
-                            "cicles_left": cicles_left,
+                            "cycles_left": cycles_left,
                         }
                     )
 

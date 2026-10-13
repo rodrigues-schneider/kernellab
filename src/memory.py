@@ -4,7 +4,7 @@ from enum import Enum
 import pandas as pd
 
 
-# Recebe a lista de requisições da memória e o número de páginas e demonstra o estado a cada ciclo
+# Registra o estado da memória após cada referência.
 class MemoryManager:
     class Methods(Enum):
         FIFO = "first_in_first_out"
@@ -23,7 +23,7 @@ class MemoryManager:
         ]
         return pd.DataFrame.from_records(rows, columns=columns)
 
-    # Remove a página que chegou primeiro
+    # Substitui a página mais antiga da memória.
     @staticmethod
     def first_in_first_out(
         references_df: pd.DataFrame, memory_capacity: int = 4
@@ -34,7 +34,8 @@ class MemoryManager:
         faults = 0
         hits = 0
 
-        for cycle, page in enumerate(references):
+        # Numera os ciclos a partir de 1, como no escalonamento da CPU.
+        for cycle, page in enumerate(references, start=1):
             page_hit = page in memory
 
             if page_hit:
@@ -59,7 +60,7 @@ class MemoryManager:
 
         return MemoryManager._as_dataframe(rows)
 
-    # Remove a página há mais tempo sem uso
+    # Substitui a página usada há mais tempo.
     @staticmethod
     def least_recently_used(
         references_df: pd.DataFrame, memory_capacity: int = 4
@@ -70,7 +71,8 @@ class MemoryManager:
         faults = 0
         hits = 0
 
-        for cycle, page in enumerate(references):
+        # Numera os ciclos a partir de 1, como no escalonamento da CPU.
+        for cycle, page in enumerate(references, start=1):
             page_hit = page in memory
 
             if page_hit:
@@ -97,7 +99,7 @@ class MemoryManager:
 
         return MemoryManager._as_dataframe(rows)
 
-    # Olha para o restante da lista e remove a página que ficará mais tempo sem ser requisitada
+    # Substitui a página cujo próximo uso está mais distante.
     @staticmethod
     def optimal(references_df: pd.DataFrame, memory_capacity: int = 4) -> pd.DataFrame:
         references = references_df["page"].astype(str).tolist()
@@ -106,7 +108,8 @@ class MemoryManager:
         faults = 0
         hits = 0
 
-        for cycle, page in enumerate(references):
+        # Numera os ciclos a partir de 1, como no escalonamento da CPU.
+        for cycle, page in enumerate(references, start=1):
             page_hit = page in memory
 
             if page_hit:
@@ -115,7 +118,7 @@ class MemoryManager:
                 faults += 1
                 if memory_capacity > 0:
                     if len(memory) >= memory_capacity:
-                        future_references = references[cycle + 1 :]
+                        future_references = references[cycle:]
                         next_use = {
                             resident_page: (
                                 future_references.index(resident_page)
