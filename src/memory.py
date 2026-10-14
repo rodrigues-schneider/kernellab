@@ -11,6 +11,7 @@ class MemoryManager:
         LRU = "least_recently_used"
         OPTIMAL = "optimal"
 
+    # Converte Dict em um DF normalizado
     @staticmethod
     def _as_dataframe(rows: list[dict]) -> pd.DataFrame:
         columns = [

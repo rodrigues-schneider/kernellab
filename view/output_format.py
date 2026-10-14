@@ -17,13 +17,14 @@ DEVICE_COLORS = {
 }
 
 
+# Padroniza os nomes dos processos em letras maiúsculas.
 def format_process_names(dataframe: pd.DataFrame) -> pd.DataFrame:
     result = dataframe.copy()
-    if "process" in result.columns:
-        result["process"] = result["process"].astype(str).str.upper()
+    result["process"] = result["process"].str.upper()
     return result
 
 
+# Ordena e formata as colunas de saída dos dispositivos.
 def format_device_output(dataframe: pd.DataFrame) -> pd.DataFrame:
     result = dataframe.copy()
     columns = [
@@ -37,44 +38,38 @@ def format_device_output(dataframe: pd.DataFrame) -> pd.DataFrame:
         "process_permissions",
         "queue",
     ]
-    ordered_columns = []
-    for column in columns:
-        if column in result.columns:
-            ordered_columns.append(column)
-    for column in result.columns:
-        if column not in ordered_columns:
-            ordered_columns.append(column)
-    result = result[ordered_columns]
+    result = result[columns]
+    result["device"] = result["device"].str.upper()
+    result["running_process"] = result["running_process"].str.upper()
+    result["status"] = result["status"].str.upper()
 
-    if "device" in result.columns:
-        result["device"] = result["device"].astype(str).str.upper()
-    if "running_process" in result.columns:
-        result["running_process"] = (
-            result["running_process"].astype(str).str.upper()
-        )
-    if "status" in result.columns:
-        result["status"] = result["status"].astype(str).str.upper()
-    if "queue" in result.columns:
-        formatted_queues = []
-        for queue in result["queue"]:
-            formatted_queue = []
-            if isinstance(queue, list):
-                for request in queue:
-                    formatted_queue.append(
-                        {
-                            **request,
-                            "process": str(request.get("process", "")).upper(),
-                            "status": str(request.get("status", "")).upper(),
-                        }
-                    )
-            formatted_queues.append(formatted_queue)
-        result["queue"] = formatted_queues
+    formatted_permissions = []
+    for permissions in result["process_permissions"]:
+        if permissions:
+            formatted_permissions.append(", ".join(permissions).upper())
+        else:
+            formatted_permissions.append("NONE")
+    result["process_permissions"] = formatted_permissions
+
+    formatted_queues = []
+    for queue in result["queue"]:
+        formatted_queue = []
+        for request in queue:
+            formatted_queue.append(
+                {
+                    "process": request["process"].upper(),
+                    "status": request["status"].upper(),
+                }
+            )
+        formatted_queues.append(formatted_queue)
+    result["queue"] = formatted_queues
     return result
 
 
+# Associa uma cor fixa para cada processo.
 def process_color_map(process_names: list[str]) -> dict[str, str]:
     colors = {}
     for index, process_name in enumerate(process_names):
         color_index = index % len(PROCESS_COLORS)
-        colors[str(process_name).upper()] = PROCESS_COLORS[color_index]
+        colors[process_name.upper()] = PROCESS_COLORS[color_index]
     return colors

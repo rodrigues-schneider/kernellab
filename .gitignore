@@ -35,4 +35,6 @@ Thumbs.db
 
 #Referencias
 LIVROS/
-docs/
+*.xlsx
+*.docx
+*.pdf

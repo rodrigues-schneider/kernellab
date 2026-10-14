@@ -68,5 +68,5 @@ O relatório teórico está em [`docs/Relatorio_Teorico_KernelLab.pdf`](docs/Rel
 - **Ordem fixa:** o escalonamento define a ordem dos processos de uma só vez. SJF e Prioridade não escolhem entre os processos à medida que eles chegam, e o Round Robin começa com todos na fila.
 - **Métricas de CPU:** todos os processos são tratados como prontos no ciclo zero, e a chegada (`arrival`) não é descontada dos tempos.
 - **Uma política por vez:** a interface executa um algoritmo de cada vez.
-- **Memória:** a sequência de páginas é independente da memória indicada para cada processo.
+- **Memória:** a sequência de páginas é independente da quantidade de memória indicada para cada processo.
 - **Dispositivos:** as filas avançam em ciclos de simulação e não representam tempo real de espera.
